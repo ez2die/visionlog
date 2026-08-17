@@ -1,0 +1,8 @@
+.git
+.env
+data
+node_modules
+android
+test
+*.md
+

@@ -1,0 +1,10 @@
+<resources>
+    <color name="paper">#F7F5EE</color>
+    <color name="card">#FFFEF9</color>
+    <color name="ink">#23261F</color>
+    <color name="muted">#74776D</color>
+    <color name="olive">#536247</color>
+    <color name="olive_pale">#E3E9DC</color>
+    <color name="line">#DEDDD4</color>
+</resources>
+

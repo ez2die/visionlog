@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">VisionLog</string>
+    <string name="sync_tab">同步</string>
+    <string name="library_tab">照片库</string>
+    <string name="server_label">家庭服务器地址</string>
+    <string name="server_hint">http://100.x.x.x:4173</string>
+    <string name="save_server">保存地址</string>
+    <string name="permission_title">照片访问</string>
+    <string name="grant_permission">授予完整照片权限</string>
+    <string name="choose_folder">选择设备图片文件夹</string>
+    <string name="manual_import">手动选择照片导入</string>
+    <string name="sync_now">立即补偿扫描并同步</string>
+    <string name="open_settings">打开系统设置</string>
+</resources>

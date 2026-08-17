@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@color/paper">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="64dp"
+        android:gravity="center_vertical" android:paddingHorizontal="20dp">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="VisionLog" android:textColor="@color/ink" android:textSize="24sp" android:textStyle="bold" />
+        <Button android:id="@+id/syncTab" style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/sync_tab" />
+        <Button android:id="@+id/libraryTab" style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/library_tab" />
+    </LinearLayout>
+
+    <ScrollView android:id="@+id/syncScreen" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="把目标文件夹的新照片可靠地送到家庭服务器。后台同步为最终一致，打开 App 会立即补偿扫描。" android:textColor="@color/muted" android:textSize="15sp" android:paddingBottom="18dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/panel" android:layout_marginBottom="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/server_label" android:textColor="@color/ink" android:textStyle="bold" android:textSize="17sp" />
+                <EditText android:id="@+id/serverUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/server_hint" android:inputType="textUri" android:singleLine="true" />
+                <Button android:id="@+id/saveServer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/save_server" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/panel" android:layout_marginBottom="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="照片来源" android:textColor="@color/ink" android:textStyle="bold" android:textSize="17sp" />
+                <TextView android:id="@+id/permissionStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/muted" android:paddingVertical="8dp" />
+                <Button android:id="@+id/grantPermission" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/grant_permission" />
+                <Button android:id="@+id/chooseFolder" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/choose_folder" android:enabled="false" />
+                <Button android:id="@+id/manualImport" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/manual_import" />
+                <TextView android:id="@+id/folderStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/muted" android:paddingTop="8dp" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/panel">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="同步队列" android:textColor="@color/ink" android:textStyle="bold" android:textSize="17sp" />
+                <TextView android:id="@+id/queueStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/muted" android:paddingVertical="10dp" />
+                <Button android:id="@+id/syncNow" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/sync_now" android:enabled="false" />
+            </LinearLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="仅支持 MediaStore 实体图片文件夹。Android 14+ 若只授予部分照片访问，自动文件夹同步会暂停。" android:textColor="@color/muted" android:textSize="12sp" android:padding="10dp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <WebView android:id="@+id/libraryWeb" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:visibility="gone" />
+</LinearLayout>

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#f5f2e9" />
+  <title>VisionLog</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#library" aria-label="VisionLog 首页">
+        <span class="brand-mark">V</span><span><b>VisionLog</b><small>私人照片日志</small></span>
+      </a>
+      <nav id="nav">
+        <a href="#library" data-view="library" class="active"><span>▦</span>照片</a>
+        <a href="#plogs" data-view="plogs"><span>◫</span>Plog <i id="draft-count"></i></a>
+        <a href="#topics" data-view="topics"><span>◉</span>主题</a>
+        <a href="#trash" data-view="trash"><span>♲</span>回收站</a>
+        <a href="#settings" data-view="settings"><span>⚙</span>设置</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="health-dot" id="health-dot"></span>
+        <span><b id="health-label">正在连接</b><small id="provider-label">—</small></span>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button class="mobile-menu" id="mobile-menu" aria-label="打开菜单">☰</button>
+        <div class="search-wrap">
+          <span>⌕</span><input id="search" type="search" placeholder="搜索照片描述、标签或备注" autocomplete="off" />
+        </div>
+        <button class="button primary" id="upload-button"><span>＋</span> 导入照片</button>
+      </header>
+      <div id="banner"></div>
+      <section id="content" aria-live="polite"><div class="loading">正在打开你的照片日志…</div></section>
+    </main>
+  </div>
+
+  <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple hidden />
+  <input id="import-package-input" type="file" accept=".gz,.tgz,application/gzip" hidden />
+  <div id="toast" role="status"></div>
+  <dialog id="modal"><div id="modal-content"></div></dialog>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

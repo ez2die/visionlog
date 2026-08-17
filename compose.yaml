@@ -1,0 +1,16 @@
+services:
+  visionlog:
+    build: .
+    container_name: visionlog
+    restart: unless-stopped
+    ports:
+      - "4173:4173"
+    volumes:
+      - ./data:/data
+    environment:
+      VISIONLOG_TIMEZONE: Asia/Shanghai
+      VISIONLOG_PLOG_HOUR: "3"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+      GEMINI_TERMS_TIER: ${GEMINI_TERMS_TIER:-paid}
+      GEMINI_CONSENTED: ${GEMINI_CONSENTED:-false}
