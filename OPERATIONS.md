@@ -23,6 +23,15 @@ docker compose ps
 
 服务监听 `0.0.0.0:4173`。通过服务器的 Tailnet IP 访问，例如 `http://100.x.x.x:4173`。不要把该端口直接暴露到公网；应用没有登录，Tailnet 成员等同完整管理员。
 
+测试环境的逐步验收入口为 `/uat.html`。在 macOS 用户会话中部署并注册开机自启服务，可执行：
+
+```bash
+chmod +x scripts/deploy-macos.sh
+VISIONLOG_APP_DIR="$PWD" scripts/deploy-macos.sh
+```
+
+服务由 LaunchAgent `app.visionlog.test` 托管，数据默认保存在 `~/Library/Application Support/VisionLog Test`，日志默认保存在 `~/Library/Logs/VisionLog`。
+
 ## Gemini
 
 在官方支持地区的服务端设置 `GEMINI_API_KEY` 和固定的 `GEMINI_MODEL`。免费服务还应设置 `GEMINI_TERMS_TIER=free`，并在 Web 设置页阅读风险后开启 Provider 同意。未配置 key 时使用演示 adapter；未同意时照片仍压缩建档，任务停在待识别。
@@ -47,4 +56,3 @@ pnpm test
 cd android && ./gradlew lintDebug assembleDebug
 docker compose config --quiet
 ```
-
