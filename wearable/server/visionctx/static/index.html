@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VisionCtx 实验台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>VisionCtx 实验台</h1>
+  <nav>
+    <button data-tab="devices" class="active">设备</button>
+    <button data-tab="session">实验</button>
+    <button data-tab="annotate">标注</button>
+    <button data-tab="report">报告</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 设备 -->
+  <section id="tab-devices" class="tab active">
+    <div id="device-list" class="grid"></div>
+    <p class="hint" id="no-devices" hidden>还没有设备连接。给 ESP32 上电，或运行 <code>python -m visionctx.fake_pod</code>。</p>
+  </section>
+
+  <!-- 实验 -->
+  <section id="tab-session" class="tab">
+    <div id="session-start" class="panel">
+      <h2>开始一轮</h2>
+      <form id="start-form" class="form-grid">
+        <label>设备 <select name="device_id" required></select></label>
+        <label>受试者 <input name="participant" required placeholder="P01"></label>
+        <label>佩戴位置 <select name="mount" required></select></label>
+        <label>任务 <select name="task" required></select></label>
+        <label class="wide">备注 <input name="notes" placeholder="光照、服装、夹具角度…"></label>
+        <label class="check"><input type="checkbox" name="keep_frames" checked> 保留本轮画面用于标注（受试者已同意）</label>
+        <button type="submit" class="primary">开始</button>
+      </form>
+    </div>
+
+    <div id="session-active" class="panel" hidden>
+      <div class="session-head">
+        <h2 id="active-title"></h2>
+        <button id="end-session" class="danger">结束本轮</button>
+      </div>
+      <p class="hint" id="active-instructions"></p>
+      <div class="live-row">
+        <div class="live"><img id="active-live" alt="实时画面"></div>
+        <div class="marker">
+          <p class="hint">用户<strong>自然看向</strong>目标时按下（数字键 1–9）。不要等画面确认。</p>
+          <div id="target-buttons" class="targets"></div>
+          <div class="row">
+            <button id="mark-reposition">用户调整了头/身体/摄像头 <kbd>R</kbd></button>
+            <button id="mark-note">备注 <kbd>N</kbd></button>
+          </div>
+          <label class="inline">反应延迟补偿 <input id="offset-ms" type="number" value="300" step="50" min="0"> ms</label>
+          <ol id="recent-marks" class="marks" reversed></ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>历史轮次</h2>
+      <table id="session-table" class="table"></table>
+    </div>
+  </section>
+
+  <!-- 标注 -->
+  <section id="tab-annotate" class="tab">
+    <div class="panel">
+      <div class="row">
+        <label>轮次 <select id="ann-session"></select></label>
+        <label class="check"><input type="checkbox" id="ann-only-open" checked> 只看未标注</label>
+        <span id="ann-progress" class="hint"></span>
+      </div>
+    </div>
+    <div id="ann-body" class="panel" hidden>
+      <div class="ann-head">
+        <h2 id="ann-title"></h2>
+        <span class="hint">←/→ 选帧 · <kbd>Y</kbd>/<kbd>N</kbd> 入画 · <kbd>C</kbd> 居中 · <kbd>O</kbd> 遮挡 · <kbd>U</kbd> 可用 · <kbd>Enter</kbd> 保存并下一条 · <kbd>J</kbd>/<kbd>K</kbd> 上/下一条</span>
+      </div>
+      <div class="ann-main">
+        <div class="ann-frame"><img id="ann-img" alt=""><div class="center-box"></div></div>
+        <div class="ann-controls">
+          <div class="toggles">
+            <button data-field="target_in_frame">目标入画</button>
+            <button data-field="centered">目标居中</button>
+            <button data-field="occluded">被遮挡</button>
+            <button data-field="useful">画面足以让 AI 判断</button>
+          </div>
+          <p class="hint">虚线框为中心区域（宽高各 50%）：目标中心落在框内算居中。</p>
+          <div class="row">
+            <button id="ann-prev">上一条</button>
+            <button id="ann-save" class="primary">保存并下一条</button>
+          </div>
+        </div>
+      </div>
+      <div id="ann-strip" class="strip"></div>
+    </div>
+    <p id="ann-empty" class="hint" hidden>这一轮没有需要标注的打标。</p>
+  </section>
+
+  <!-- 报告 -->
+  <section id="tab-report" class="tab">
+    <div class="panel">
+      <div class="row">
+        <label>分组 <select id="report-group">
+          <option value="mount">佩戴位置</option>
+          <option value="mount,task">位置 × 任务</option>
+          <option value="mount,participant">位置 × 受试者</option>
+        </select></label>
+        <a id="report-csv" href="api/report.csv">下载 CSV</a>
+      </div>
+      <div class="table-wrap"><table id="report-table" class="table"></table></div>
+      <p class="hint">入画率分档：≥85% 产品化候选 · 60–85% 勉强 · &lt;60% 不可接受。调整率 &gt;20% 说明安装位置可能有根本问题。定义见 docs/metrics.md。</p>
+    </div>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
