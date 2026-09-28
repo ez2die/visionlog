@@ -9,12 +9,14 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import metrics, quality
+from .ai import Providers, build_providers
+from .assistant import Assistant
 from .config import Settings
 from .devices import DeviceConn, DeviceRegistry, LiveFrame
 from .protocol import ProtocolError, parse_frame
@@ -54,6 +56,34 @@ class MarkCreate(BaseModel):
     offset_ms: int = 0
 
 
+class TurnStart(BaseModel):
+    conversation_id: str
+    device_id: str
+    retry_of: int | None = None
+    source: str = "voice"
+
+
+class TurnText(BaseModel):
+    text: str
+
+
+class TextAsk(BaseModel):
+    conversation_id: str
+    device_id: str
+    text: str
+
+
+class ConversationPatch(BaseModel):
+    task_text: str
+    device_id: str | None = None  # creates the conversation if it does not exist yet
+
+
+class Judgement(BaseModel):
+    correct: bool | None = None
+    described_scene: bool | None = None
+    note: str = ""
+
+
 class Annotation(BaseModel):
     frame_id: int | None = None
     target_in_frame: bool | None = None
@@ -62,10 +92,12 @@ class Annotation(BaseModel):
     useful: bool | None = None
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, providers: Providers | None = None) -> FastAPI:
     settings = settings or Settings()
     store = Store(settings.data_dir)
     registry = DeviceRegistry()
+    providers = providers or build_providers()
+    assistant = Assistant(store, registry, providers)
     tasks = json.loads((PKG / "tasks.json").read_text(encoding="utf-8"))
 
     async def sweeper():
@@ -74,6 +106,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             n = await asyncio.to_thread(store.delete_expired_frames, cutoff)
             if n:
                 log.info("retention: deleted %d frames", n)
+            for t in await asyncio.to_thread(store.old_speech_files, cutoff):
+                (settings.data_dir / t["speech_path"]).unlink(missing_ok=True)
+                store.update_turn(t["id"], speech_path=None)
             await asyncio.sleep(60)
 
     @asynccontextmanager
@@ -95,6 +130,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.store = store
     app.state.registry = registry
     app.state.settings = settings
+    app.state.assistant = assistant
+    log.info("providers: %s", providers.describe())
 
     # --- camera pod -----------------------------------------------------------
 
@@ -328,6 +365,97 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.annotate(mark_id, a.frame_id, a.target_in_frame, a.centered, a.occluded, a.useful)
         return {"ok": True}
 
+    # --- voice turns ----------------------------------------------------------------
+
+    @app.get("/api/providers")
+    def get_providers():
+        return providers.describe()
+
+    @app.post("/api/turns/start", status_code=201)
+    def start_turn(req: TurnStart):
+        require_device(req.device_id)
+        if req.retry_of is not None and not store.get_turn(req.retry_of):
+            raise HTTPException(422, "unknown retry_of turn")
+        return assistant.start(req.conversation_id, req.device_id, req.retry_of, req.source)
+
+    def require_turn(turn_id: int) -> dict:
+        turn = store.get_turn(turn_id)
+        if not turn:
+            raise HTTPException(404, "unknown turn")
+        return turn
+
+    def open_turn(turn_id: int) -> dict:
+        turn = require_turn(turn_id)
+        if turn["status"] != "listening":
+            raise HTTPException(409, f"turn is {turn['status']}")
+        return turn
+
+    @app.post("/api/turns/{turn_id}/audio")
+    async def turn_audio(turn_id: int, request: Request):
+        open_turn(turn_id)
+        audio = await request.body()
+        if not audio:
+            raise HTTPException(422, "empty audio")
+        media_type = request.headers.get("content-type", "audio/wav").split(";")[0]
+        return await assistant.finish(turn_id, audio=audio, media_type=media_type)
+
+    @app.post("/api/turns/{turn_id}/text")
+    async def turn_text(turn_id: int, req: TurnText):
+        open_turn(turn_id)
+        return await assistant.finish(turn_id, text=req.text)
+
+    @app.post("/api/turns/{turn_id}/cancel")
+    def cancel_turn(turn_id: int):
+        open_turn(turn_id)
+        store.update_turn(turn_id, status="cancelled")
+        return store.get_turn(turn_id)
+
+    @app.post("/api/ask")
+    async def ask(req: TextAsk):
+        """Typed question from the dashboard: same pipeline, no ASR."""
+        require_device(req.device_id)
+        turn = assistant.start(req.conversation_id, req.device_id, source="text")
+        return await assistant.finish(turn["id"], text=req.text)
+
+    @app.get("/api/turns")
+    def list_turns(session_id: int | None = None, conversation_id: str | None = None,
+                   limit: int = Query(200, le=2000)):
+        return store.list_turns(session_id, conversation_id, limit)
+
+    @app.get("/api/turns/{turn_id}")
+    def get_turn(turn_id: int):
+        return require_turn(turn_id)
+
+    @app.get("/api/turns/{turn_id}/speech")
+    def turn_speech(turn_id: int):
+        turn = require_turn(turn_id)
+        if not turn["speech_path"] or not (settings.data_dir / turn["speech_path"]).exists():
+            raise HTTPException(404, "no speech for this turn")
+        return FileResponse(settings.data_dir / turn["speech_path"], media_type=turn["speech_type"])
+
+    @app.put("/api/turns/{turn_id}/judgement")
+    def judge_turn(turn_id: int, j: Judgement):
+        require_turn(turn_id)
+        store.judge_turn(turn_id, j.correct, j.described_scene, j.note)
+        return store.get_turn(turn_id)
+
+    @app.get("/api/conversations/{conversation_id}")
+    def get_conversation(conversation_id: str):
+        conv = store.get_conversation(conversation_id)
+        if not conv:
+            raise HTTPException(404, "unknown conversation")
+        return conv
+
+    @app.put("/api/conversations/{conversation_id}")
+    def set_task(conversation_id: str, patch: ConversationPatch):
+        if not store.get_conversation(conversation_id):
+            if not patch.device_id:
+                raise HTTPException(404, "unknown conversation")
+            require_device(patch.device_id)
+            store.ensure_conversation(conversation_id, patch.device_id)
+        store.set_conversation_task(conversation_id, patch.task_text.strip())
+        return store.get_conversation(conversation_id)
+
     # --- report -------------------------------------------------------------------
 
     def report(group: str) -> list[dict]:
@@ -337,6 +465,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/report")
     def get_report(group: str = "mount"):
         return report(group)
+
+    @app.get("/api/report/qa")
+    def get_qa_report(group: str = "mount"):
+        keys = tuple(k for k in group.split(",") if k in ("mount", "task", "participant"))
+        sessions, marks, _ = store.report_rows()
+        return metrics.compute_qa(sessions, marks, store.turn_report_rows(), group_by=keys or ("mount",))
 
     @app.get("/api/report.csv")
     def get_report_csv(group: str = "mount"):

@@ -13,6 +13,7 @@
     <button data-tab="devices" class="active">设备</button>
     <button data-tab="session">实验</button>
     <button data-tab="annotate">标注</button>
+    <button data-tab="qa">问答</button>
     <button data-tab="report">报告</button>
   </nav>
 </header>
@@ -52,6 +53,7 @@
           <div id="target-buttons" class="targets"></div>
           <div class="row">
             <button id="mark-reposition">用户调整了头/身体/摄像头 <kbd>R</kbd></button>
+            <button id="mark-phone">用户掏出了手机 <kbd>P</kbd></button>
             <button id="mark-note">备注 <kbd>N</kbd></button>
           </div>
           <label class="inline">反应延迟补偿 <input id="offset-ms" type="number" value="300" step="50" min="0"> ms</label>
@@ -101,6 +103,26 @@
     <p id="ann-empty" class="hint" hidden>这一轮没有需要标注的打标。</p>
   </section>
 
+  <!-- 问答 -->
+  <section id="tab-qa" class="tab">
+    <div class="panel">
+      <h2>测试提问 <span id="qa-providers" class="hint"></span></h2>
+      <form id="ask-form" class="row">
+        <select name="device_id" required></select>
+        <input name="text" required placeholder="例如：这个是什么？ / 我现在要装路由器 / 下一步呢？" class="grow">
+        <button type="submit" class="primary">提问</button>
+      </form>
+      <p id="ask-result" class="answer" hidden></p>
+    </div>
+    <div class="panel">
+      <div class="row">
+        <label>轮次 <select id="qa-session"><option value="">全部</option></select></label>
+        <span class="hint">判定：答对 <kbd>1</kbd> 答错 <kbd>2</kbd> · 用户不得不描述画面 <kbd>D</kbd> · <kbd>J</kbd>/<kbd>K</kbd> 上/下一条</span>
+      </div>
+      <div id="qa-list"></div>
+    </div>
+  </section>
+
   <!-- 报告 -->
   <section id="tab-report" class="tab">
     <div class="panel">
@@ -113,6 +135,9 @@
         <a id="report-csv" href="api/report.csv">下载 CSV</a>
       </div>
       <div class="table-wrap"><table id="report-table" class="table"></table></div>
+      <h2 class="spaced">Phase 2 问答</h2>
+      <div class="table-wrap"><table id="qa-report-table" class="table"></table></div>
+      <p class="hint">首次回答正确率 ≥80% 才有机会形成低摩擦体验。重问率 = 用户按"重问"的次数 / 首次提问数。</p>
       <p class="hint">入画率分档：≥85% 产品化候选 · 60–85% 勉强 · &lt;60% 不可接受。调整率 &gt;20% 说明安装位置可能有根本问题。定义见 docs/metrics.md。</p>
     </div>
   </section>

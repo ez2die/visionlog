@@ -53,6 +53,7 @@ async function showTab(tab) {
   $$(".tab").forEach((s) => s.classList.toggle("active", s.id === "tab-" + tab));
   if (tab === "session") await refreshSessions();
   if (tab === "annotate") await loadAnnotateSessions();
+  if (tab === "qa") await loadQa();
   if (tab === "report") await loadReport();
 }
 
@@ -72,11 +73,12 @@ async function refreshDevices() {
     }
     updateDeviceCard(card, d);
   }
-  const sel = $("#start-form [name=device_id]");
-  const cur = sel.value;
-  sel.replaceChildren(...state.devices.map((d) =>
-    el("option", { value: d.device_id }, `${d.name}${d.online ? "" : "（离线）"}`)));
-  if (cur) sel.value = cur;
+  for (const sel of $$("#start-form [name=device_id], #ask-form [name=device_id]")) {
+    const cur = sel.value;
+    sel.replaceChildren(...state.devices.map((d) =>
+      el("option", { value: d.device_id }, `${d.name}${d.online ? "" : "（离线）"}`)));
+    if (cur) sel.value = cur;
+  }
 }
 
 function deviceCard(d) {
@@ -241,13 +243,14 @@ async function addMark(kind, target = "", btn = null, note = "") {
 async function loadRecentMarks() {
   if (!state.active) return;
   const marks = await api(`sessions/${state.active.id}/marks`);
-  const label = { gaze: "看", reposition: "调整", note: "备注" };
+  const label = { gaze: "看", reposition: "调整", phone: "掏手机", note: "备注" };
   $("#recent-marks").replaceChildren(...marks.slice(-30).reverse().map((m) => el("li", {},
     `${fmtTime(m.ts_ms)} ${label[m.kind]} ${m.target}${m.note ? " · " + m.note : ""}`,
     el("button", { onclick: async () => { await api(`marks/${m.id}`, { method: "DELETE" }); loadRecentMarks(); } }, "撤销"))));
 }
 
 $("#mark-reposition").addEventListener("click", (e) => addMark("reposition", "", e.currentTarget));
+$("#mark-phone").addEventListener("click", (e) => addMark("phone", "", e.currentTarget));
 $("#mark-note").addEventListener("click", () => {
   const note = prompt("备注");
   if (note) addMark("note", "", null, note);
@@ -381,7 +384,17 @@ document.addEventListener("keydown", (e) => {
     const btn = $(`#target-buttons [data-key="${e.key}"]`);
     if (btn) { btn.click(); e.preventDefault(); }
     else if (k === "r") $("#mark-reposition").click();
+    else if (k === "p") $("#mark-phone").click();
     else if (k === "n") $("#mark-note").click();
+  } else if (state.tab === "qa" && state.qa.turns.length) {
+    const t = state.qa.turns[state.qa.i];
+    if (k === "1") judge(t, { correct: true });
+    else if (k === "2") judge(t, { correct: false });
+    else if (k === "d") judge(t, { described_scene: !t.described_scene });
+    else if (k === "j") selectTurn(state.qa.i - 1);
+    else if (k === "k") selectTurn(state.qa.i + 1);
+    else return;
+    e.preventDefault();
   } else if (state.tab === "annotate" && state.ann && !$("#ann-body").hidden) {
     const map = { y: ["target_in_frame", true], n: ["target_in_frame", false], c: ["centered"], o: ["occluded"], u: ["useful"] };
     if (map[k]) toggle(...map[k]);
@@ -393,6 +406,109 @@ document.addEventListener("keydown", (e) => {
     else return;
     e.preventDefault();
   }
+});
+
+// --- voice Q&A ------------------------------------------------------------------------------
+
+state.qa = { turns: [], i: 0, conversation: "dashboard-" + Math.random().toString(36).slice(2, 8) };
+const INTENT_LABEL = { current: "当前", task: "任务", check: "检查", memory: "回忆", capture: "拍摄" };
+
+async function loadQa() {
+  const p = await api("providers");
+  $("#qa-providers").textContent = `ASR ${p.asr} · VLM ${p.vlm} · TTS ${p.tts}`;
+  const sessions = await api("sessions");
+  const sel = $("#qa-session");
+  const cur = sel.value;
+  sel.replaceChildren(el("option", { value: "" }, "全部"), ...sessions.map((s) =>
+    el("option", { value: s.id }, `#${s.id} ${s.participant} · ${mountName(s.mount)} · ${taskById(s.task)?.name || s.task}`)));
+  sel.value = cur;
+  await loadTurns();
+}
+
+async function loadTurns() {
+  const sid = $("#qa-session").value;
+  state.qa.turns = await api("turns" + (sid ? `?session_id=${sid}` : ""));
+  state.qa.i = Math.min(state.qa.i, Math.max(0, state.qa.turns.length - 1));
+  renderTurns();
+}
+
+function renderTurns() {
+  const list = $("#qa-list");
+  if (!state.qa.turns.length) {
+    list.replaceChildren(el("p", { class: "hint" }, "还没有问答。"));
+    return;
+  }
+  list.replaceChildren(...state.qa.turns.map((t, i) => turnRow(t, i)));
+}
+
+function turnRow(t, i) {
+  const tm = t.timings || {};
+  const latency = tm.total_ms !== undefined ? `${(tm.total_ms / 1000).toFixed(1)}s` : "";
+  const parts = ["asr_ms", "vlm_ms", "tts_ms"].filter((k) => tm[k] !== undefined)
+    .map((k) => `${k.split("_")[0].toUpperCase()} ${(tm[k] / 1000).toFixed(1)}`).join(" · ");
+  const yes = (v) => (v === 1 || v === true ? "yes" : v === 0 || v === false ? "no" : "");
+  return el("div", { class: "turn" + (i === state.qa.i ? " sel" : ""), onclick: () => selectTurn(i) },
+    el("div", { class: "meta" },
+      fmtTime(t.speech_start_ms), el("br"),
+      t.source === "text" ? "键入" : "语音", t.retry_of ? " · 重问" : "", el("br"),
+      latency, el("br"), parts),
+    el("div", {},
+      el("div", {},
+        t.intent ? el("span", { class: "tag" }, INTENT_LABEL[t.intent] || t.intent) : null,
+        t.task_text ? el("span", { class: "tag" }, "任务：" + t.task_text) : null,
+        el("span", { class: "q" }, t.transcript ?? (t.status === "listening" ? "（正在听…）" : ""))),
+      t.answer ? el("div", {}, t.answer) : null,
+      t.error ? el("div", { class: "err" }, t.error) : null,
+      el("div", { class: "frames" }, (t.frame_ids || []).map((id, j) => el("figure", {},
+        el("a", { href: `api/frames/${id}.jpg`, target: "_blank" }, el("img", { src: `api/frames/${id}.jpg`, loading: "lazy" })),
+        el("figcaption", {}, t.frame_labels?.[j] || ""))))),
+    el("div", { class: "judge" },
+      el("button", { class: t.correct === 1 ? "yes" : "", onclick: (e) => { e.stopPropagation(); judge(t, { correct: true }); } }, "答对"),
+      el("button", { class: t.correct === 0 ? "no" : "", onclick: (e) => { e.stopPropagation(); judge(t, { correct: false }); } }, "答错"),
+      el("button", { class: yes(t.described_scene) === "yes" ? "no" : "", onclick: (e) => { e.stopPropagation(); judge(t, { described_scene: !t.described_scene }); } }, "用户描述了画面"),
+      t.speech_path ? el("button", { onclick: (e) => { e.stopPropagation(); new Audio(`api/turns/${t.id}/speech`).play(); } }, "▶") : null),
+  );
+}
+
+function selectTurn(i) {
+  state.qa.i = Math.max(0, Math.min(i, state.qa.turns.length - 1));
+  renderTurns();
+  $$("#qa-list .turn")[state.qa.i]?.scrollIntoView({ block: "nearest" });
+}
+
+let judgeQueue = Promise.resolve();
+
+function judge(t, change) {
+  // Apply locally first and send requests in order, so fast key presses don't overwrite each other.
+  if ("correct" in change) t.correct = change.correct ? 1 : 0;
+  if ("described_scene" in change) t.described_scene = change.described_scene ? 1 : 0;
+  renderTurns();
+  const body = {
+    correct: t.correct === null ? null : !!t.correct,
+    described_scene: t.described_scene === null ? null : !!t.described_scene,
+    note: t.judge_note || "",
+  };
+  judgeQueue = judgeQueue
+    .then(() => api(`turns/${t.id}/judgement`, { method: "PUT", body }))
+    .catch((err) => toast("保存失败：" + err.message));
+}
+
+$("#qa-session").addEventListener("change", loadTurns);
+$("#ask-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const out = $("#ask-result");
+  out.hidden = false;
+  out.textContent = "思考中…";
+  try {
+    const t = await api("ask", { method: "POST", body: {
+      conversation_id: state.qa.conversation, device_id: f.get("device_id"), text: f.get("text"),
+    } });
+    out.textContent = t.error ? "出错：" + t.error : `${t.answer}（${(t.timings.total_ms / 1000).toFixed(1)}s）`;
+    if (t.speech_path) new Audio(`api/turns/${t.id}/speech`).play().catch(() => {});
+    e.target.text.value = "";
+    loadTurns();
+  } catch (err) { out.textContent = "失败：" + err.message; }
 });
 
 // --- report --------------------------------------------------------------------------------
@@ -429,6 +545,26 @@ async function loadReport() {
       }))),
   );
   if (!rows.length) $("#report-table").append(el("tr", {}, el("td", { colspan: 12, class: "hint" }, "还没有数据。")));
+
+  const qa = await api(`report/qa?group=${group}`);
+  const ms = (v) => (v === null || v === undefined ? "—" : (v / 1000).toFixed(1) + "s");
+  const QA_COLS = [
+    ["first_answer_accuracy", "首次回答正确率", pct], ["answer_accuracy", "总正确率", pct],
+    ["rephrase_rate", "重问率", pct], ["described_scene_rate", "需描述画面", pct],
+    ["phone_uses", "掏手机次数", (v) => v], ["latency_p50_ms", "延迟 P50", ms], ["latency_p90_ms", "延迟 P90", ms],
+    ["error_rate", "出错率", pct], ["judged", "已判定/问答", null],
+  ];
+  $("#qa-report-table").replaceChildren(
+    el("tr", {}, ...keys.map((k) => el("th", {}, keyLabel[k])), ...QA_COLS.map(([, h]) => el("th", {}, h))),
+    ...qa.map((r) => el("tr", {},
+      ...keys.map((k) => el("td", {}, keyFmt[k](r[k]))),
+      ...QA_COLS.map(([f, , fmt]) => {
+        if (f === "judged") return el("td", {}, `${r.judged} / ${r.turns}`);
+        const cls = f === "first_answer_accuracy" && r.first_answer_ok !== null ? (r.first_answer_ok ? "band-candidate" : "band-unacceptable") : undefined;
+        return el("td", { class: cls }, fmt(r[f]));
+      }))),
+  );
+  if (!qa.length) $("#qa-report-table").append(el("tr", {}, el("td", { colspan: 12, class: "hint" }, "还没有问答数据。")));
 }
 $("#report-group").addEventListener("change", loadReport);
 

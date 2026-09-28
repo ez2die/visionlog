@@ -10,21 +10,65 @@
       "phase": 1,
       "name": "Task 1 桌面目标",
       "instructions": "用户坐在桌前，按主持人口令自然看向某件物体，不刻意对准摄像头。",
-      "targets": ["手机", "电源适配器", "网线", "螺丝刀", "USB Hub"]
+      "targets": [
+        "手机",
+        "电源适配器",
+        "网线",
+        "螺丝刀",
+        "USB Hub"
+      ]
     },
     {
       "id": "p1-handwork",
       "phase": 1,
       "name": "Task 2 近距离操作",
       "instructions": "用户完成一组近距离手部操作，主持人在用户视线落在操作点时打标。",
-      "targets": ["插 USB", "接网线", "拧螺丝", "安装小部件"]
+      "targets": [
+        "插 USB",
+        "接网线",
+        "拧螺丝",
+        "安装小部件"
+      ]
     },
     {
       "id": "p1-walk",
       "phase": 1,
       "name": "Task 3 走动",
       "instructions": "用户沿固定路线正常走动，看到布置的目标时自然观看。",
-      "targets": ["门牌", "标签", "海报", "商品"]
+      "targets": [
+        "门牌",
+        "标签",
+        "海报",
+        "商品"
+      ]
+    },
+    {
+      "id": "p2-what",
+      "phase": 2,
+      "name": "Test A 这个是什么？",
+      "instructions": "用户拿起或看向一件物体，直接问“这个是什么？”，不描述物体。",
+      "targets": []
+    },
+    {
+      "id": "p2-how",
+      "phase": 2,
+      "name": "Test B 这个怎么弄？",
+      "instructions": "给用户一个需要操作的设备（路由器、转接头、小家电），用户只看着它问“这个怎么弄？”。",
+      "targets": []
+    },
+    {
+      "id": "p2-wrong",
+      "phase": 2,
+      "name": "Test C 哪里不对？",
+      "instructions": "预先把一处接线或零件装错，用户问“哪里不对？”。",
+      "targets": []
+    },
+    {
+      "id": "p2-next",
+      "phase": 2,
+      "name": "Test D 下一步？",
+      "instructions": "用户进行一个多步骤任务，中途问“下一步？”。先说出任务，例如“我现在要装路由器”。",
+      "targets": []
     }
   ]
 }

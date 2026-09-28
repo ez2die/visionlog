@@ -68,9 +68,45 @@ CREATE TABLE IF NOT EXISTS annotations (
   useful INTEGER,
   updated_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  task_text TEXT NOT NULL DEFAULT '',
+  created_ms INTEGER NOT NULL,
+  updated_ms INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS turns (
+  id INTEGER PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  device_id TEXT NOT NULL,
+  session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+  retry_of INTEGER REFERENCES turns(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'voice',
+  speech_start_ms INTEGER NOT NULL,
+  speech_end_ms INTEGER,
+  transcript TEXT,
+  intent TEXT,
+  task_text TEXT,
+  frame_ids TEXT,
+  frame_labels TEXT,
+  answer TEXT,
+  speech_path TEXT,
+  speech_type TEXT,
+  providers TEXT,
+  timings TEXT,
+  error TEXT,
+  status TEXT NOT NULL DEFAULT 'listening',
+  correct INTEGER,
+  described_scene INTEGER,
+  judge_note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS turns_session ON turns(session_id, speech_start_ms);
+CREATE INDEX IF NOT EXISTS turns_conversation ON turns(conversation_id, speech_start_ms);
 """
 
-MARK_KINDS = ("gaze", "reposition", "note")
+TURN_JSON = ("frame_ids", "frame_labels", "providers", "timings")
+
+MARK_KINDS = ("gaze", "reposition", "phone", "note")
 
 
 def now_ms() -> int:
@@ -222,6 +258,10 @@ class Store:
 
     def delete_session(self, session_id: int) -> None:
         self._delete_frames(self._q("SELECT id, path FROM frames WHERE session_id=?", (session_id,)))
+        for t in self._q("SELECT speech_path FROM turns WHERE session_id=? AND speech_path IS NOT NULL",
+                         (session_id,)):
+            (self.data_dir / t["speech_path"]).unlink(missing_ok=True)
+        self._x("DELETE FROM turns WHERE session_id=?", (session_id,))
         self._x("DELETE FROM sessions WHERE id=?", (session_id,))
 
     # --- marks & annotations ----------------------------------------------
@@ -258,6 +298,81 @@ class Store:
             (mark_id, frame_id, b(target_in_frame), b(centered), b(occluded), b(useful), now_ms()),
         )
 
+    # --- conversations & turns ---------------------------------------------
+
+    def ensure_conversation(self, conversation_id: str, device_id: str) -> dict:
+        t = now_ms()
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO conversations(id, device_id, created_ms, updated_ms) VALUES (?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET device_id=excluded.device_id, updated_ms=excluded.updated_ms",
+                (conversation_id, device_id, t, t))
+        return self.get_conversation(conversation_id)
+
+    def get_conversation(self, conversation_id: str) -> dict | None:
+        return self._one("SELECT * FROM conversations WHERE id=?", (conversation_id,))
+
+    def set_conversation_task(self, conversation_id: str, task_text: str) -> None:
+        self._x("UPDATE conversations SET task_text=?, updated_ms=? WHERE id=?",
+                (task_text, now_ms(), conversation_id))
+
+    def create_turn(self, conversation_id: str, device_id: str, session_id: int | None,
+                    speech_start_ms: int, retry_of: int | None, source: str) -> dict:
+        tid = self._x(
+            "INSERT INTO turns(conversation_id, device_id, session_id, retry_of, source, speech_start_ms)"
+            " VALUES (?,?,?,?,?,?)",
+            (conversation_id, device_id, session_id, retry_of, source, speech_start_ms))
+        return self.get_turn(tid)
+
+    def update_turn(self, turn_id: int, **fields) -> None:
+        if not fields:
+            return
+        for k in TURN_JSON:
+            if k in fields and fields[k] is not None:
+                fields[k] = json.dumps(fields[k], ensure_ascii=False)
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self._x(f"UPDATE turns SET {cols} WHERE id=?", (*fields.values(), turn_id))
+
+    @staticmethod
+    def _turn(row: dict | None) -> dict | None:
+        if row:
+            for k in TURN_JSON:
+                row[k] = json.loads(row[k]) if row[k] else None
+        return row
+
+    def get_turn(self, turn_id: int) -> dict | None:
+        return self._turn(self._one("SELECT * FROM turns WHERE id=?", (turn_id,)))
+
+    def list_turns(self, session_id: int | None = None, conversation_id: str | None = None,
+                   limit: int = 200) -> list[dict]:
+        where, args = [], []
+        if session_id is not None:
+            where.append("session_id=?")
+            args.append(session_id)
+        if conversation_id is not None:
+            where.append("conversation_id=?")
+            args.append(conversation_id)
+        sql = "SELECT * FROM turns" + (" WHERE " + " AND ".join(where) if where else "")
+        rows = self._q(sql + " ORDER BY speech_start_ms DESC LIMIT ?", (*args, limit))
+        return [self._turn(r) for r in rows]
+
+    def recent_dialogue(self, conversation_id: str, since_ms: int, limit: int) -> list[tuple[str, str]]:
+        rows = self._q(
+            "SELECT transcript, answer FROM turns WHERE conversation_id=? AND status='done'"
+            " AND speech_start_ms>=? ORDER BY speech_start_ms DESC LIMIT ?",
+            (conversation_id, since_ms, limit))
+        return [(r["transcript"], r["answer"]) for r in reversed(rows)]
+
+    def judge_turn(self, turn_id: int, correct: bool | None, described_scene: bool | None, note: str) -> None:
+        b = lambda v: None if v is None else int(v)  # noqa: E731
+        self._x("UPDATE turns SET correct=?, described_scene=?, judge_note=? WHERE id=?",
+                (b(correct), b(described_scene), note, turn_id))
+
+    def old_speech_files(self, older_than_ms: int) -> list[dict]:
+        return self._q("SELECT id, speech_path FROM turns WHERE speech_path IS NOT NULL AND speech_start_ms<?"
+                       " AND (session_id IS NULL OR session_id NOT IN (SELECT id FROM sessions WHERE keep_frames=1))",
+                       (older_than_ms,))
+
     # --- reporting inputs -------------------------------------------------
 
     def report_rows(self) -> tuple[list[dict], list[dict], list[dict]]:
@@ -270,3 +385,8 @@ class Store:
             "SELECT session_id, COUNT(*) AS n, SUM(auto_ok) AS auto_ok, MIN(ts_ms) AS t0, MAX(ts_ms) AS t1"
             " FROM frames WHERE session_id IS NOT NULL AND capture=0 GROUP BY session_id")
         return sessions, marks, frames
+
+    def turn_report_rows(self) -> list[dict]:
+        return self._q(
+            "SELECT t.id, t.session_id, t.retry_of, t.status, t.correct, t.described_scene, t.timings, t.intent"
+            " FROM turns t WHERE t.session_id IS NOT NULL")

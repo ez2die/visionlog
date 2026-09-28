@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.VisionCtx" parent="@android:style/Theme.DeviceDefault.DayNight" />
+</resources>
